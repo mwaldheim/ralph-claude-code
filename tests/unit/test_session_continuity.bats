@@ -197,7 +197,7 @@ function_exists_in_ralph() {
 
 @test "should_resume_session returns true for recent session" {
     # Store a recent session
-    local now_iso=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S%z)
+    local now_iso=$(get_iso_timestamp)
     echo "{\"session_id\": \"session-recent\", \"timestamp\": \"$now_iso\"}" > "$CLAUDE_SESSION_FILE"
 
     run should_resume_session
@@ -379,11 +379,11 @@ EOF
 }
 
 @test "init_claude_session uses cross-platform stat command" {
-    # Check for uname or Darwin/Linux detection in get_session_file_age_hours
+    # Check for cross-platform implementation in get_session_file_age_hours
     run grep -A30 'get_session_file_age_hours' "${BATS_TEST_DIRNAME}/../../lib/providers/claude.sh"
 
-    # Should have cross-platform handling
-    [[ "$output" == *"Darwin"* ]] || [[ "$output" == *"uname"* ]] || skip "Cross-platform stat not yet implemented"
+    # Should have cross-platform handling (GNU stat -c, BSD stat -f, or date -r)
+    [[ "$output" == *"stat -c"* ]] || [[ "$output" == *"stat -f"* ]] || [[ "$output" == *"date -r"* ]] || skip "Cross-platform stat not yet implemented"
 }
 
 @test "get_session_file_age_hours returns correct age" {
@@ -418,10 +418,10 @@ EOF
 
 @test "init_claude_session removes expired session file" {
     # Source the script to get the function
-    source "${BATS_TEST_DIRNAME}/../../ralph_loop.sh"
+    source "${BATS_TEST_DIRNAME}/../../lib/providers/claude.sh"
 
     # Create an old session file (simulate by setting low expiry)
-    echo '{"session_id": "old-session", "timestamp": 1000000000}' > "$CLAUDE_SESSION_FILE"
+    echo '{"session_id": "old-session", "timestamp": "2020-01-01T00:00:00Z"}' > "$CLAUDE_SESSION_FILE"
     touch -d "2020-01-01" "$CLAUDE_SESSION_FILE" 2>/dev/null || touch -t 202001010000 "$CLAUDE_SESSION_FILE"
 
     # Set very short expiry to trigger expiration
@@ -548,6 +548,7 @@ EOF
     # Define reset_session inline for testing (extracted from ralph_loop.sh)
     reset_session() {
         local reason=${1:-"manual_reset"}
+        local explicit_loop_count=${2:-0}
         local reset_timestamp
         reset_timestamp=$(get_iso_timestamp)
 
@@ -577,7 +578,7 @@ EOF
     }
 
     # Call reset_session
-    reset_session "test_reset"
+    reset_session "test_reset" 5
 
     # Verify exit signals were cleared
     local new_completion_count=$(jq '.completion_indicators | length' "$EXIT_SIGNALS_FILE")
@@ -616,6 +617,7 @@ EOF
     # Define reset_session with the fix
     reset_session() {
         local reason=${1:-"manual_reset"}
+        local explicit_loop_count=${2:-0}
         local reset_timestamp
         reset_timestamp=$(get_iso_timestamp)
 
@@ -643,7 +645,7 @@ EOF
     }
 
     # User runs --reset-session
-    reset_session "manual_reset"
+    reset_session "manual_reset" 0
 
     # Verify the fix: completion indicators should be cleared
     local new_completion_count=$(jq '.completion_indicators | length' "$EXIT_SIGNALS_FILE")

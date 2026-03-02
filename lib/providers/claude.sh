@@ -95,9 +95,13 @@ init_claude_session() {
             rm -f "$session_file"
             echo ""
         else
-            local session_id=$(cat "$session_file" 2>/dev/null)
-            log_status "INFO" "Resuming Claude session: $session_id ($age_hours hours old)"
-            echo "$session_id"
+            local session_id=$(jq -r '.session_id // .sessionId // ""' "$session_file" 2>/dev/null)
+            if [[ -n "$session_id" && "$session_id" != "null" ]]; then
+                log_status "INFO" "Resuming Claude session: $session_id ($age_hours hours old)"
+                echo "$session_id"
+            else
+                echo ""
+            fi
         fi
     else
         echo ""
@@ -119,6 +123,8 @@ execute_claude_code() {
     local timestamp=$(date '+%Y-%m-%d_%H-%M-%S')
     local output_file="$LOG_DIR/claude_output_${timestamp}.log"
     local loop_count=$1
+    local prompt_file=$2
+    local live_output="${3:-$LIVE_OUTPUT}"
     local calls_made=$(cat "$CALL_COUNT_FILE" 2>/dev/null || echo "0")
     calls_made=$((calls_made + 1))
 
@@ -150,21 +156,21 @@ execute_claude_code() {
 
     # Live mode requires JSON output (stream-json) — use local override instead of global mutation
     local output_format="$CLAUDE_OUTPUT_FORMAT"
-    if [[ "$LIVE_OUTPUT" == "true" && "$output_format" == "text" ]]; then
+    if [[ "$live_output" == "true" && "$output_format" == "text" ]]; then
         log_status "WARN" "Live mode requires JSON output format. Using json override for this session."
         output_format="json"
     fi
 
     # Build the Claude CLI command with modern flags
     local use_modern_cli=false
-    if build_claude_command "$PROMPT_FILE" "$loop_context" "$session_id" "$output_format"; then
+    if build_claude_command "$prompt_file" "$loop_context" "$session_id" "$output_format"; then
         use_modern_cli=true
         log_status "INFO" "Using modern CLI mode (${output_format} output)"
     else
         log_status "WARN" "Failed to build modern CLI command, falling back to legacy mode"
-        if [[ "$LIVE_OUTPUT" == "true" ]]; then
+        if [[ "$live_output" == "true" ]]; then
             log_status "ERROR" "Live mode requires a built Claude command. Falling back to background mode."
-            LIVE_OUTPUT=false
+            live_output=false
         fi
     fi
 
@@ -172,15 +178,15 @@ execute_claude_code() {
     local exit_code=0
     echo -e "\n\n=== Loop #$loop_count - $(date '+%Y-%m-%d %H:%M:%S') ===" > "$LIVE_LOG_FILE"
 
-    if [[ "$LIVE_OUTPUT" == "true" ]]; then
+    if [[ "$live_output" == "true" ]]; then
         # LIVE MODE implementation (same as in ralph_loop.sh)
         if ! command -v jq &> /dev/null || ! command -v stdbuf &> /dev/null; then
             log_status "ERROR" "Live mode dependencies missing. Falling back to background mode."
-            LIVE_OUTPUT=false
+            live_output=false
         fi
     fi
 
-    if [[ "$LIVE_OUTPUT" == "true" ]]; then
+    if [[ "$live_output" == "true" ]]; then
         log_status "INFO" "📺 Live output mode enabled - showing Claude Code streaming..."
         echo -e "${PURPLE}━━━━━━━━━━━━━━━━ Claude Code Output ━━━━━━━━━━━━━━━━${NC}"
 
@@ -320,8 +326,10 @@ build_claude_command() {
 save_claude_session() {
     local output_file=$1
     if [[ -f "$output_file" ]]; then
-        local session_id=$(jq -r '.metadata.session_id // .session_id // empty' "$output_file" 2>/dev/null)
-        [[ -n "$session_id" && "$session_id" != "null" ]] && echo "$session_id" > "$RALPH_DIR/.claude_session_id"
+        local session_id=$(jq -r '.metadata.session_id // .session_id // .sessionId // empty' "$output_file" 2>/dev/null)
+        if [[ -n "$session_id" && "$session_id" != "null" ]]; then
+            store_session_id "$session_id"
+        fi
     fi
 }
 

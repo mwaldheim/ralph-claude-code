@@ -785,7 +785,7 @@ EOF
 
 @test "live mode overrides text to json format in lib/providers/claude.sh" {
     # Verify lib/providers/claude.sh contains the live mode format override logic
-    run grep -A3 'LIVE_OUTPUT.*true.*output_format.*text' "${BATS_TEST_DIRNAME}/../../lib/providers/claude.sh"
+    run grep -A3 'live_output.*true.*output_format.*text' "${BATS_TEST_DIRNAME}/../../lib/providers/claude.sh"
 
     # Should find the override block
     [[ "$output" == *"output_format"* ]]
@@ -806,7 +806,7 @@ EOF
     run grep -A10 'Failed to build modern CLI command' "${BATS_TEST_DIRNAME}/../../lib/providers/claude.sh"
 
     # Should find safety check that falls back to background mode
-    [[ "$output" == *"LIVE_OUTPUT"* ]]
+    [[ "$output" == *"live_output"* ]]
 }
 
 @test "build_claude_command is called regardless of output format in lib/providers/claude.sh" {

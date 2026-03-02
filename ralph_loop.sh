@@ -538,6 +538,13 @@ main() {
     load_provider
     provider_init
 
+    # Validate allowed tools if specified
+    if [[ -n "$CLAUDE_ALLOWED_TOOLS" ]]; then
+        if ! validate_allowed_tools "$CLAUDE_ALLOWED_TOOLS"; then
+            exit 1
+        fi
+    fi
+
     log_status "SUCCESS" "🚀 Ralph loop starting with AI provider: ${RALPH_PROVIDER:-claude}"
     log_status "INFO" "Max calls per hour: $MAX_CALLS_PER_HOUR"
     log_status "INFO" "Logs: $LOG_DIR/ | Docs: $DOCS_DIR/ | Status: $STATUS_FILE"
@@ -791,9 +798,6 @@ Examples:
 HELPEOF
 }
 
-# Load AI provider
-load_provider
-
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -873,9 +877,6 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --allowed-tools)
-            if ! validate_allowed_tools "$2"; then
-                exit 1
-            fi
             CLAUDE_ALLOWED_TOOLS="$2"
             shift 2
             ;;
